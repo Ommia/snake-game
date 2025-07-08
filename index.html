@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>贪吃蛇游戏</title>
+    <style>
+        body {
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+        }
+        .game-container {
+            background-color: #34495e;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        #game-board {
+            background-color: #1a252f;
+            display: block;
+            border-radius: 5px;
+        }
+        #score-board {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 15px;
+            color: #ecf0f1;
+            font-weight: bold;
+        }
+        .game-over-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #34495e;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            color: #ecf0f1;
+            display: none;
+        }
+        .game-over-modal h2 {
+            color: #e74c3c;
+        }
+        .game-over-modal button {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .game-over-modal button:hover {
+            background-color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div id="score-board">分数: <span id="score">0</span> | 关卡: <span id="level">1</span> | 最高分: <span id="high-score">0</span></div>
+        <canvas id="game-board" width="400" height="400"></canvas>
+        <div class="game-over-modal" id="game-over-modal">
+            <h2>游戏结束</h2>
+            <p>最终分数: <span id="final-score">0</span></p>
+            <p>最高分: <span id="modal-high-score">0</span></p>
+            <button onclick="initGame()">重新开始</button>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('game-board');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverModal = document.getElementById('game-over-modal');
+        const finalScoreElement = document.getElementById('final-score');
+        const levelElement = document.getElementById('level');
+        const highScoreElement = document.getElementById('high-score');
+        const modalHighScoreElement = document.getElementById('modal-high-score');
+
+        let highScore = parseInt(localStorage.getItem('snakeHighScore')) || 0;
+        highScoreElement.textContent = highScore;
+
+        // 定义常量，避免硬编码
+        const GRID_SIZE = 20;
+        const TILE_COUNT = canvas.width / GRID_SIZE;
+        const SPEED_LEVELS = [200, 160, 120, 80];
+        const LEVEL_THRESHOLDS = [20, 100, 200];
+        const BEANS_PER_LEVEL = [1, 1, 2];
+
+        let snake = [
+            {x: 10, y: 10}
+        ];
+        let direction = {x: 0, y: 0};
+        let food = {x: 0, y: 0};
+        let score = 0;
+        let level = 1;
+        let gameInterval;
+        let lastEatTime = 0;
+        let consecutiveEats = 0;
+        let gameStarted = false;
+
+        // 封装游戏配置
+        const GameConfig = {
+            initSnake: [{x: 10, y: 10}],
+            initDirection: {x: 1, y: 0}
+        };
+
+        function initGame() {
+            direction = {...GameConfig.initDirection};
+            score = 0;
+            level = 1;
+            lastEatTime = 0;
+            consecutiveEats = 0;
+            gameStarted = false;
+            scoreElement.textContent = score;
+            levelElement.textContent = level;
+            snake = [...GameConfig.initSnake];
+            generateFood();
+            clearInterval(gameInterval);
+            drawGame();
+            gameOverModal.style.display = 'none';
+        }
+
+        function startGame() {
+            if (!gameStarted) {
+                gameStarted = true;
+                gameInterval = setInterval(updateGame, SPEED_LEVELS[level - 1]);
+            }
+        }
+
+        function generateFood() {
+            food.x = Math.floor(Math.random() * TILE_COUNT);
+            food.y = Math.floor(Math.random() * TILE_COUNT);
+        }
+
+        function updateGame() {
+            const head = { ...snake[0] };
+            head.x += direction.x;
+            head.y += direction.y;
+
+            if (checkCollision(head)) {
+                gameOver();
+                return;
+            }
+
+            snake.unshift(head);
+
+            if (head.x === food.x && head.y === food.y) {
+                const currentTime = Date.now();
+                if (currentTime - lastEatTime <= 5000) {
+                    consecutiveEats++;
+                    score += 10 * consecutiveEats;
+                } else {
+                    consecutiveEats = 1;
+                    score += 10;
+                }
+                lastEatTime = currentTime;
+                scoreElement.textContent = score;
+
+                // 根据关卡生成对应数量的豆子
+                for (let i = 0; i < (BEANS_PER_LEVEL[level - 1] || 1) - 1; i++) {
+                    generateFood();
+                }
+                generateFood();
+                checkLevelUp();
+            } else {
+                snake.pop();
+            }
+
+            drawGame();
+        }
+
+        // 封装关卡升级逻辑
+        function checkLevelUp() {
+            for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
+                if (score >= LEVEL_THRESHOLDS[i] && level === i + 1) {
+                    level = i + 2;
+                    levelElement.textContent = level;
+                    clearInterval(gameInterval);
+                    gameStarted = false;
+                    alert(`恭喜！进入第 ${level} 关，速度加快！`);
+                    break;
+                }
+            }
+        }
+
+        function checkCollision(head) {
+            if (head.x < 0 || head.x >= TILE_COUNT || head.y < 0 || head.y >= TILE_COUNT) {
+                return true;
+            }
+            return snake.slice(1).some(segment => segment.x === head.x && segment.y === head.y);
+        }
+
+        function drawGame() {
+            ctx.fillStyle = '#1a252f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#2ecc71';
+            snake.forEach(segment => {
+                ctx.fillRect(segment.x * GRID_SIZE, segment.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            });
+
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(food.x * GRID_SIZE, food.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        }
+
+        function gameOver() {
+            clearInterval(gameInterval);
+            finalScoreElement.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('snakeHighScore', highScore);
+                highScoreElement.textContent = highScore;
+            }
+            modalHighScoreElement.textContent = highScore;
+            gameOverModal.style.display = 'block';
+        }
+
+        document.addEventListener('keydown', (e) => {
+            startGame();
+            switch(e.key) {
+                case 'ArrowUp':
+                    if (direction.y !== 1) direction = {x: 0, y: -1};
+                    break;
+                case 'ArrowDown':
+                    if (direction.y !== -1) direction = {x: 0, y: 1};
+                    break;
+                case 'ArrowLeft':
+                    if (direction.x !== 1) direction = {x: -1, y: 0};
+                    break;
+                case 'ArrowRight':
+                    if (direction.x !== -1) direction = {x: 1, y: 0};
+                    break;
+            }
+        });
+
+        initGame();
+        drawGame();
+        // 移除自动调用的 initGame 后的游戏循环启动代码
+        // 改为按任意键开始游戏
+    </script>
+</body>
+</html>
